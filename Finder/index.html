@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Поисковик</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg,#74ABE2,#5563DE);
+            font-family: Arial, sans-serif;
+        }
+        .start-button {
+            display: inline-block;
+            padding: 20px 40px;
+            font-size: 2rem;
+            background: #0078ff;
+            color: white;
+            border-radius: 15px;
+            text-decoration: none;
+            text-align: center;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .start-button:hover {
+            background: #005fcc;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <a href="http://localhost:8080/search" class="start-button">Старт</a>
+</body>
+</html>
