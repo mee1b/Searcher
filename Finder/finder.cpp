@@ -1,133 +1,119 @@
-#include <vector>
-#include <string>
-#include <iostream>
-#include <iterator>
-#include <regex>
-#include <boost/locale.hpp>
-#include <boost/locale/conversion.hpp>
-#include "../Spider/database.h"
+#include "finder.h"
 
-// СЃРѕСЂС‚РёСЂСѓРµРј СЃСЃС‹Р»РєРё РїРѕ РІРµСЃР°Рј
-std::vector<std::string> findByFrequency(std::map<std::string, int>& linkWeight) {
-	std::vector<std::string> seachResults;
 
-	// СЃРѕР·РґР°РµРј РІРµРєС‚РѕСЂ РїР°СЂ РёР· map С‡С‚РѕР±С‹ СѓРґРѕР±РЅРµРµ СЃРѕСЂС‚РёСЂРѕРІР°С‚СЊ
-	std::vector<std::pair<std::string, int>> vec(linkWeight.begin(), linkWeight.end());
-
-	// СЃРѕСЂС‚РёСЂСѓРµРј РїРѕ СѓР±С‹РІР°РЅРёСЋ С‡Р°СЃС‚РѕС‚С‹
-	std::sort(vec.begin(), vec.end(), [](const auto& lhs, const auto& rhs) {
-		return lhs.second > rhs.second;
-		});
-
-	// Р·Р°РїРѕР»РЅСЏРµРј СЂРµР·СѓР»СЊС‚РёСЂСѓСЋС‰РёР№ РІРµРєС‚РѕСЂ С‚РѕР»СЊРєРѕ СЃСЃС‹Р»РєР°РјРё
-	for (const auto& pair : vec) {
-		seachResults.push_back(pair.first);
-	}
-
-	return seachResults;
+std::vector<std::string> SearchEngine::search(const std::string& query) 
+{
+    originalQuery_ = query;
+    cleanedQuery_ = sanitizeString(originalQuery_);
+    extractWords(cleanedQuery_);
+    collectResults();
+    return sortByWeight();
 }
 
-// РѕСЃРЅРѕРІРЅР°СЏ С„СѓРЅРєС†РёСЏ РїРѕРёСЃРєР°
-std::vector<std::string> finder(std::string inSeachString, database& DB) {
-	std::vector<std::string> seachResults;
+void SearchEngine::printDebugInfo() const 
+{
+    LOG_INFO("Слова для поиска:");
+    for (const auto& w : words_) {
+        LOG_INFO(w);
+    }
+    LOG_INFO("Ссылки с весами (в порядке убывания веса)");
+    for (const auto& pair : linkWeights_) 
+    {
+        LOG_INFO(pair.first + ": " + std::to_string(pair.second));
+    }
+}
 
-	// РѕСЃС‚Р°РІР»СЏРµРј С‚РѕР»СЊРєРѕ Р±СѓРєРІС‹ Рё С†РёС„СЂС‹, РѕСЃС‚Р°Р»СЊРЅС‹Рµ СЃРёРјРІРѕР»С‹ Р·Р°РјРµРЅСЏРµРј РїСЂРѕР±РµР»РѕРј
-	try
-	{
-		std::regex pattern_keep_alphanumeric(R"([^a-zР°-СЏС‘A-ZРђ-РЇРЃ0-9])");
-		inSeachString = std::regex_replace(inSeachString, pattern_keep_alphanumeric, " ");
+std::string SearchEngine::sanitizeString(const std::string& input) 
+{
+    std::string result = input;
+    try 
+    {
+        // Регулярка, которая убирает всё, кроме букв (латиница и кириллица) и цифр.
+        // Всё остальное заменяется пробелом.
+        std::regex pattern_keep_alphanumeric(R"([^
+            a b c d e f g h i j k l m n o p q r s t u v w x y z
+            а б в г д е ё ж з и й к л м н о п р с т у ф х ц ч ш щ ъ ы ь э ю я
+            А Б В Г Д Е Ё Ж З И Й К Л М Н О П Р С Т У Ф Х Ц Ч Ш Щ Ъ Ы Ь Э Ю Я
+            A B C D E F G H I J K L M N O P Q R S T U V W X Y Z])");
+        result = std::regex_replace(result, pattern_keep_alphanumeric, " ");
 
-		// Р»РёС€РЅРёРµ РїСЂРѕР±РµР»С‹ Р·Р°РјРµРЅСЏРµРј РЅР° "_"
-		std::regex SPACEpattern(R"(\s+)");
-		inSeachString = std::regex_replace(inSeachString, SPACEpattern, "_");
-	}
-	catch (const std::exception& ex) {
-		std::cout << __FILE__ << ", line: " << __LINE__ << std::endl;
-		std::cout << "РћС€РёР±РєР° СЂРµРіСѓР»СЏСЂРєРё: " << ex.what() << std::endl;
-	}
+        // Все повторяющиеся пробелы схлопываются в один символ "_"
+        std::regex spacePattern(R"(\s+)");
+        result = std::regex_replace(result, spacePattern, "_");
 
-	// РїСЂРёРІРѕРґРёРј РІСЃРµ Рє РЅРёР¶РЅРµРјСѓ СЂРµРіРёСЃС‚СЂСѓ
-	boost::locale::generator gen;
-	std::locale loc = gen("");
-	inSeachString = boost::locale::to_lower(inSeachString, loc);
+        // Приводим строку к нижнему регистру с учётом языковых особенностей.
+        result = boost::locale::to_lower(result, locale_);
+    }
+    catch (const std::exception& ex) 
+    {
+        // Если вдруг регулярка или boost решили сломаться — не паникуем.
+        // Просто логируем ошибку.
+        std::string er = ex.what();
+        LOG_ERR("\nRegex error: " + er);
+    }
+    return result;
+}
 
-	// СЂР°Р·Р±РёРІР°РµРј СЃС‚СЂРѕРєСѓ РЅР° СЃР»РѕРІР° Рё СЃРѕС…СЂР°РЅСЏРµРј РІ set, С‡С‚РѕР±С‹ СѓРЅРёРєР°Р»СЊРЅС‹Рµ
-	std::set<std::string> setInWords;
-	unsigned int cut_end_pos{ 0 };
-	unsigned int cut_start_pos{ 0 };
-	unsigned int stringLength = inSeachString.length();
-	for (unsigned int iter = 0; iter < stringLength; ++iter) {
-		if (inSeachString[iter] == '_') {
-			cut_end_pos = iter;
-			std::string word = inSeachString.substr(cut_start_pos, cut_end_pos - cut_start_pos);
-			if (word.length() >= 3) {
-				setInWords.insert(word);
-			}
-			cut_start_pos = iter + 1;
-		}
-		else if (iter == (stringLength - 1)) {
-			cut_end_pos = stringLength;
-			std::string word = inSeachString.substr(cut_start_pos, cut_end_pos - cut_start_pos);
-			if (word.length() >= 3) {
-				setInWords.insert(word);
-			}
-		}
-	}
-	// РІС‹РІРѕРґРёРј СЃР»РѕРІР° РґР»СЏ РїСЂРѕРІРµСЂРєРё
-	std::cout << "\nРЎР»РѕРІР° РґР»СЏ РїРѕРёСЃРєР°: \n";
-	for (const auto& word : setInWords) {
-		std::cout << word << std::endl;
-	}
+void SearchEngine::extractWords(const std::string& str) {
+    size_t start = 0;
+    for (size_t i = 0; i <= str.size(); ++i) {
+        // либо конец строки, либо найден разделитель
+        if (i == str.size() || str[i] == '_') {
+            if (i > start) {
+                std::string word = str.substr(start, i - start);
+                if (word.length() >= 3) {
+                    // set автоматически уберёт дубликаты
+                    words_.insert(word);
+                }
+            }
+            start = i + 1;
+        }
+    }
+}
 
-	// СЂРµР·СѓР»СЊС‚Р°С‚С‹ РїРѕРёСЃРєР° РґР»СЏ РєР°Р¶РґРѕРіРѕ СЃР»РѕРІР°
-	std::vector<std::map<std::string, int>> resultsPerWord;
-	// СЃР»РѕРІР° РІ РїРѕСЂСЏРґРєРµ РѕР±СЂР°Р±РѕС‚РєРё
-	std::vector<std::string> wordsInOrder;
-	// РІРµСЃР° СЃСЃС‹Р»РѕРє
-	std::map<std::string, int> linkWeight;
 
-	// РїРѕР»СѓС‡Р°РµРј СЂРµР·СѓР»СЊС‚Р°С‚С‹ РїРѕРёСЃРєР° РїРѕ РєР°Р¶РґРѕРјСѓ СЃР»РѕРІСѓ РёР· Р±Р°Р·С‹
-	try {
-		for (const auto& word : setInWords)
-		{
-			try {
-				resultsPerWord.push_back(DB.seachRequest(word));
-				wordsInOrder.push_back(word);
-			}
-			catch (const std::exception& ex) {
-				std::cout << __FILE__ << ", line: " << __LINE__ << std::endl;
-				std::cout << "РќРµ РїРѕР»СѓС‡РёР»РѕСЃСЊ РЅР°Р№С‚Рё <" + word + "> РІ Р±Р°Р·Рµ: " << ex.what() << std::endl;
-			}
-		}
-	}
-	catch (const std::exception& ex) {
-		std::cout << "РћС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ СЃ Р±Р°Р·РѕР№: " << ex.what() << std::endl;
-	}
+void SearchEngine::collectResults() 
+{
+    for (const auto& word : words_) 
+    {
+        try 
+        {
+            // Выполняем запрос к базе: получаем map<ссылка, вес>.
+            auto result = db_.seachRequest(word);
 
-	// РІС‹РІРѕРґРёРј СЂРµР·СѓР»СЊС‚Р°С‚С‹ РїРѕРёСЃРєР° РїРѕ СЃР»РѕРІР°Рј
-	std::cout << "\nР РµР·СѓР»СЊС‚Р°С‚С‹ РїРѕРёСЃРєР° РґР»СЏ СЃР»РѕРІ: \n";
-	unsigned int wordIter = 0;
-	for (const auto& vectors : resultsPerWord) {
-		std::cout << wordsInOrder[wordIter] << ": \n";
-		for (const auto& pair : vectors) {
-			std::cout << pair.first << ": " << pair.second << std::endl;
-			// СЃС‡РёС‚Р°РµРј РІРµСЃ СЃСЃС‹Р»РѕРє
-			linkWeight[pair.first] += pair.second;
-		}
-		++wordIter;
-	}
+            // Сохраняем по отдельности для каждой лексемы.
+            resultsPerWord_.push_back(result);
+            wordsInOrder_.push_back(word);
 
-	std::cout << "\nРЎСЃС‹Р»РєРё СЃ РІРµСЃР°РјРё (РїРѕ СѓР±С‹РІР°РЅРёСЋ РІРµСЃР°)\n";
+            // Обновляем общий вес каждой ссылки.
+            for (const auto& entry : result) {
+                linkWeights_[entry.first] += entry.second;
+            }
+        }
+        catch (const std::exception& ex) 
+        {
+            // Если что-то пошло не так с запросом — логируем ошибку, но не падаем.
+            std::string er = ex.what();
+            LOG_ERR(word + ">: " + er);
+        }
+    }
+}
 
-	// СЃРѕСЂС‚РёСЂСѓРµРј СЃСЃС‹Р»РєРё РїРѕ РІРµСЃСѓ
-	std::vector<std::string> sortedLinks = findByFrequency(linkWeight);
+std::vector<std::string> SearchEngine::sortByWeight() const 
+{
+    // Превращаем map в вектор пар, чтобы можно было отсортировать.
+    std::vector<std::pair<std::string, int>> vec(linkWeights_.begin(), linkWeights_.end());
 
-	// РІС‹РІРѕРґРёРј РѕС‚СЃРѕСЂС‚РёСЂРѕРІР°РЅРЅС‹Рµ СЃСЃС‹Р»РєРё
-	for (const auto& link : sortedLinks) {
-		std::cout << link << ": " << linkWeight[link] << std::endl;
-	}
+    // Лямбда сортирует по убыванию второго элемента (веса).
+    std::sort(vec.begin(), vec.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.second > rhs.second;
+        });
 
-	// РІРѕР·РІСЂР°С‰Р°РµРј СЂРµР·СѓР»СЊС‚Р°С‚
-	seachResults = std::move(sortedLinks);
-	return seachResults;
+    // Формируем результирующий список ссылок.
+    std::vector<std::string> sortedLinks;
+    sortedLinks.reserve(vec.size());
+    for (const auto& pair : vec) {
+        sortedLinks.push_back(pair.first);
+    }
+    return sortedLinks;
 }

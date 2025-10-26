@@ -5,13 +5,13 @@
 #include <tuple> 
 #include <windows.h> 
 #include <mutex> 
-#include <exception>
 
 void database::SetConnection(std::string DataBaseHostName,
 	std::string DataBaseName,
 	std::string DataBaseUserName,
 	std::string DataBasePassword,
-	int DataBasePort) {
+	int DataBasePort) 
+{
 	std::string str_connection = "";
 
 	// Собираем строку для подключения к Postgres

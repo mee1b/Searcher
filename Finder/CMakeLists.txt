@@ -15,9 +15,14 @@ link_directories("C:/vcpkg/installed/x64-windows/lib")
 include_directories("C:/vcpkg/installed/x64-windows/include")
 
 set(PROJECT_SOURCES
+    main.cpp
     finder.h
     finder.cpp
-    main.cpp
+    DatabaseConnection.h 
+    utils.h 
+    session.h 
+    httpserver.h
+    logger.h
     ../Spider/database.h
     ../Spider/database.cpp
     ../Spider/ParcerINI.h
@@ -25,6 +30,8 @@ set(PROJECT_SOURCES
 )
 
 add_executable(Finder ${PROJECT_SOURCES})
+
+target_compile_definitions(Finder PRIVATE PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
 
 target_link_libraries(Finder
     Boost::locale
