@@ -19,6 +19,9 @@ public:
 	// Конструктор: принимает HTML-код страницы и адрес сайта
 	ParcerHTML(std::string HTML_strings, std::string SourceHost);
 
+	//Валидация ссылки
+	bool isValidLink(const std::string& link);
+
 	// Получить ссылки
 	std::set<std::string> getLinks();
 
